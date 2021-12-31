@@ -363,11 +363,11 @@ class Compiler:
 # Command Line Interface
 # =============================================================================
 
-def command( s:str="ExampleProject/script.cclr" ) -> None:
+def command( s:str="ExampleProject/script.cclr", w:str="./" ) -> None:
 	assert(s.endswith(".cclr"))
 
 	dir, file_name = os.path.split(s)
-	cache_dir:str = os.path.join("./", "__cclrcach__")
+	cache_dir:str = os.path.join(w, "__cclrcach__")
 	out_cpp:str = file_name[0:-4]+"cpp"
 	out_h:str = file_name[0:-4]+"h"
 
