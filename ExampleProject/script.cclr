@@ -1,0 +1,6 @@
+alc new_var:int;
+alc(static const) another:int = 435;
+alc(const) only_const:int = 435;
+alc(static) only_static:int = 2 + 2 * (84+3);
+alc as:int;
+alc dff:int = 2;
