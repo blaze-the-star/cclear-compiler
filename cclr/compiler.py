@@ -1,9 +1,9 @@
 
-import fire
 import os
-from Commands import *
+from cclr.commands import *
 from enum import IntEnum, auto
 from typing import Dict
+from tqdm import tqdm
 
 class LexerState:
 	idx:int = -1 # Starts at -1 because char_next increments before returning
@@ -38,18 +38,23 @@ class Lexer:
 	def pares_state_any(self, t_state:LexerState) -> None:
 		char:str = ""
 
-		while t_state.is_parsing():
-			char = t_state.char_now()
-			
-			if char.isalnum():
-				self.pares_state_word( t_state )
-				continue
-			elif self.is_symbol(char):
-				t_state.tokens.append(char)
-				t_state.char_next()
-				continue
-
-			char = t_state.char_next()
+		i:int = 0
+		with tqdm(total=len(t_state.script), desc="Lexing CClear files", unit="char") as pbar:
+			while t_state.is_parsing():
+				char = t_state.char_now()
+				if char.isalnum():
+					self.pares_state_word( t_state )
+					continue
+				elif self.is_symbol(char):
+					t_state.tokens.append(char)
+					t_state.char_next()
+					continue
+				char = t_state.char_next()
+				# Update progress bar
+				while i < t_state.idx:
+					i += 1
+					if i % 100 == 0:
+						pbar.update(100)
 
 		return t_state.tokens
 
@@ -91,11 +96,18 @@ class Parser:
 		self.tokens = tokens
 
 		commands:list = []
-		while self.cursor < len(self.tokens)-1:
-			expression:Command = self.parse_script()
-			if expression.is_error():
-				return [expression]
-			commands.append(expression)
+		i:int = 0
+		with tqdm(total=len(self.tokens), desc="Parsinng CClear files", unit="token") as pbar:
+			while self.cursor < len(self.tokens)-1:
+				expression:Command = self.parse_script()
+				if expression.is_error():
+					return [expression]
+				commands.append(expression)
+				# Update progress bar
+				while i < self.cursor:
+					i += 1
+					if i % 100 == 0:
+						pbar.update(100)
 
 		if len(commands) != 0:
 			return commands
@@ -330,7 +342,7 @@ class Compiler:
 		compiled:str = ""
 
 		command:Command
-		for command in commands:
+		for command in tqdm(commands, desc="Compile C++ files", unit="command"):
 			if command.type == CmdTypes.VAR_DECLATION:
 				cmd_options:Command = command.cmd_options
 				cmd_name:Command = command.cmd_name
@@ -359,37 +371,3 @@ class Compiler:
 
 		return compiled
 
-# =============================================================================
-# Command Line Interface
-# =============================================================================
-
-def command( s:str="ExampleProject/script.cclr", w:str="./" ) -> None:
-	assert(s.endswith(".cclr"))
-
-	dir, file_name = os.path.split(s)
-	cache_dir:str = os.path.join(w, "__cclrcach__")
-	out_cpp:str = file_name[0:-4]+"cpp"
-	out_h:str = file_name[0:-4]+"h"
-
-	source_code:int = ""
-	with open(os.path.join(".",s), "r") as file:
-		source_code = file.read()
-
-	lx = Lexer()
-	ps = Parser()
-	c = Compiler()
-
-	tokens:list = lx.tokenize(source_code)
-	commands:list = ps.parse(tokens)
-	cpp_code:str = c.compile(commands)
-
-	if not os.path.isdir(cache_dir):
-		os.mkdir(cache_dir)
-
-	with open( os.path.join(cache_dir,out_cpp), "w") as file:
-		file.write(cpp_code)
-	with open( os.path.join(cache_dir,out_h), "w") as file:
-		file.write("hi h")
-
-if __name__ == "__main__":
-	fire.Fire(command)
