@@ -1,15 +1,23 @@
 
 import os
 import click
-from cclr.compiler import Compiler, Parser, Lexer
+from cclr_py_scripts.compiler import Compiler
+from cclr_py_scripts.parser import Parser
+from cclr_py_scripts.lexer import Lexer
 
 # =============================================================================
 # Command Line Interface
 # =============================================================================
 
+class Thing:
+	pass
+
 @click.group()
 def main() -> None:
 	pass
+
+def build2( script:str, workspace:str="./", recursive:str="./", localoutput:bool=False ) -> None:
+	build( script, workspace, recursive, localoutput )
 
 @main.command("build")
 @click.argument("script", type=click.Path(exists=True))
@@ -17,6 +25,9 @@ def main() -> None:
 @click.option("-r", "--recursive", type=click.Path(exists=True), default="", help="Recursively builds all .cclr scripts in the specified folder to .cpp and .h files.")
 @click.option("-w", "--workspace", type=click.Path(exists=True), default="./", help="The folder where __cclrcache__ will be stored. (Defaults to current directory)")
 @click.option("-l", "--localoutput", type=bool, default=False, help="Rather than store the built .cpp and .h files in a __cclrcache__ folder store them in the same directory as their source .cclr files.")
+def _build( script:str, workspace:str="./", recursive:str="./", localoutput:bool=False ) -> None:
+	build( script, workspace, recursive, localoutput)
+
 def build( script:str, workspace:str="./", recursive:str="./", localoutput:bool=False ) -> None:
 	"""
 	Compiles a .cclr script to .cpp and .h files. The .cpp and .h files are then saved to __cclrcache__ in the current directory.
