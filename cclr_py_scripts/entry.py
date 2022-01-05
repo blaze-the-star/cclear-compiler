@@ -1,16 +1,19 @@
 
 import os
 import click
-from cclr_py_scripts.compiler import Compiler
-from cclr_py_scripts.parser import Parser
-from cclr_py_scripts.lexer import Lexer
 
+try:
+	from compiler import Compiler
+	from parser import Parser
+	from lexer import Lexer
+except:
+	from cclr_py_scripts.compiler import Compiler
+	from cclr_py_scripts.parser import Parser
+	from cclr_py_scripts.lexer import Lexer
+	
 # =============================================================================
 # Command Line Interface
 # =============================================================================
-
-class Thing:
-	pass
 
 @click.group()
 def main() -> None:

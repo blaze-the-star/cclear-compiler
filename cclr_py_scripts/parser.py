@@ -1,75 +1,120 @@
 
-from typing import Dict
-from cclr_py_scripts.commands import *
+try:
+	from cclr_py_scripts.commands import *
+	from cclr_py_scripts.lexer import Lexer, Token, TokenList
+except:
+	from commands import *
+	from lexer import Lexer, Token, TokenList
+from types import FunctionType
 from tqdm import tqdm
 
-class Parser:
+class Parser(object):
 
 	cursor:int = -1
-	cursor_saved:int = cursor
-	tokens:list = []
+	cursors_saved:int = [cursor]
+	tokens:TokenList = []
 
-	def parse(self, tokens:list) -> list:
+	indent:int = 0
+	expected_indent:int = 0
+	can_dedent:bool = False
+	is_awaiting_initial_indent:bool = False
+
+	def parse(self, tokens:TokenList, show_bar:bool=False) -> list:
 		self.cursor = -1
-		self.cursor_saved = -1
+		self.cursors_saved = [-1]
 		self.tokens = tokens
+
+		self.indent = 0
+		self.expected_indent = 0
+		self.is_awaiting_initial_indent = True
+		self.can_dedent = False
 
 		commands:list = []
 		i:int = 0
-		with tqdm(total=len(self.tokens), desc="Parsinng CClear files", unit="token") as pbar:
-			while self.cursor < len(self.tokens)-1:
-				expression:Command = self.parse_script()
+		with tqdm(total=len(self.tokens), desc="Parsinng CClear files", unit="token", disable=not show_bar) as pbar:
+			while self.cursor != len(self.tokens)-1:
+
+				loop_made_change:bool = False
+				while True:
+					if self.token_next_check("\n"):
+						self.indent = 0
+						loop_made_change = True
+						continue
+					tk = self.token_spy()
+					ma = Lexer.RE_INDENT.match(tk.text)
+					if ma != None:
+						# TODO: Better handling of spaces and tabs
+						self.indent = len(tk.text)
+						if self.is_awaiting_initial_indent:
+							self.expected_indent = self.indent
+							self.is_awaiting_initial_indent = False
+
+						self.token_next()
+						loop_made_change = True
+						continue
+					break
+				if loop_made_change:
+					continue
+
+				expression:Command = self.p_script()
 				if expression.is_error():
 					return [expression]
 				commands.append(expression)
 				# Update progress bar
-				while i < self.cursor:
-					i += 1
-					if i % 100 == 0:
-						pbar.update(100)
+				if self.cursor-pbar.n > len(tokens)/100:
+					pbar.update(self.cursor-pbar.n)
+
+			pbar.update(self.cursor+1-pbar.n)
 
 		if len(commands) != 0:
-			return commands
+			return CmdScript(commands)
 
-		return [CmdError(msg="Error in parse.")]
+		err:CmdError = CmdError(msg="Error in parse.", token=self.token_spy())
+		return CmdScript(([err]))
 
-	def tmplt_express_ex_op_ex(self, higher_expression, variant) -> Command:
-		expression1:Command = higher_expression()
-		if expression1.is_error():
-			return expression1
+	def eoe(self, left:FunctionType, right:FunctionType=None, op:str="NA", 
+		pre_op:str="NA", pos_op:str="NA", cmd_type:CmdTypes=CmdTypes.NO_TYPE) -> Command:
+		"""
+		A base funtion for parsing tokens.
+		"""
 
-		expression2:Command = variant()
-		if expression2.is_error():
-			return expression2
-		if expression2.is_empty():
-			return expression1
-		if expression2.type == CmdTypes.BINARY_EXPRESSION:
-			expression2.left = expression1
-			return expression2
+		self.token_save(0) # Return to slot 0 if pre op is used, but not all requirements are met
 
-		return CmdError(msg="Error in [express][op][express].")
+		if pre_op != "NA": # Using left op, optionally using right op, but not op.
+			if self.token_next_check(pre_op):
+				e2:Command = right()
+				if e2.is_error():
+					return e2
+				if e2.is_empty():
+					return left()
 
-	def tmplt_express_ex_op_ex_right(self, higher_expression, variant_self, check_op:str) -> Command:
-		if self.token_spy() == check_op:
-			op:str = self.token_next()
-			expression:Command = higher_expression()
-			if expression.is_error() or expression.is_empty():
-				return expression
-			return CmdBinaryExpression( op=op, right=expression )
-			
-		# Empty
-		return CmdEmpty()
+				if pos_op == "NA" or self.token_next_check(pos_op):
+					return CmdGroup(type=cmd_type, right=e2, pre_op=pre_op, pos_op=pos_op)
 
-	def tmplt_express_op_ex_op(self, higher_expression, inner_expression, open_op:str, close_op:str) -> Command:
-		self.token_save()
-		if self.token_next_check(open_op):
-			expression:Command = inner_expression()
-			if self.token_next_check(close_op):
-				return CmdGroup(value=expression, left="(", right=")")
+			return left()
 
-			return CmdEmpty()
+		elif pos_op != "NA": # Using right_op without left_op
+			assert(False, "post_op requires pre_op because to implementation exists for without it.")
 
-		return higher_expression()
+		elif op != "NA": # Using only op
+			e1:Command = left()
+			if e1.is_error():
+				return e1
+
+			self.token_save()
+			if self.token_next_check(op):
+				e2:Command = right()
+				if e2.is_error():
+					return e2
+				if e2.is_empty():
+					self.token_restore()
+					return e1
+
+				return CmdGroup(type=cmd_type, left=e1, right=e2, op=op)
+
+			return e1
+
+		return left()
 
 	def token_inspect(self, expectation:str) -> str:
 		return self.token_next() == expectation
@@ -93,46 +138,64 @@ class Parser:
 	def token_now(self) -> str:
 		return self.tokens[self.cursor]
 
-	def token_restore(self) -> None:
-		self.cursor = self.cursor_saved
+	def token_restore(self, slot:int=0) -> None:
+		self.cursor = self.cursors_saved[slot]
 
-	def token_save(self) -> None:
-		self.cursor_saved = self.cursor
+	def token_save(self, slot:int=0) -> None:
+		append_by:int = (slot+1)-len(self.cursors_saved)
+		self.cursors_saved += range(append_by)
+		self.cursors_saved[slot] = self.cursor
 
 	def token_spy(self) -> str:
 		if self.cursor+1 >= len(self.tokens):
-			return ""
+			return Token()
 		return self.tokens[self.cursor+1]
 
 	# =============================================================================
 	# Parse Script
 	# =============================================================================
 
-	def parse_script(self) -> Command:
-		cmd:Command = self.parse_expression()
-		if not cmd.is_empty(): # Return results or error
-			return cmd
+	def p_script(self) -> Command:
+		self.token_save()
+		cmd:Command = CmdEmpty()
 		
-		cmd:Command = self.parse_var_declaration()
-		if not cmd.is_empty(): # Return results or error
+		reading_tk:Token = self.token_spy()
+
+		cmd = self.p_vardec_start()
+		if cmd.is_empty():
+			self.token_restore()
+			cmd = self.p_expr_start()
+
+		if not cmd.is_empty(): # Return indentation error
+			if self.indent > self.expected_indent:
+				err:CmdError = CmdError(reading_tk, msg="Unexpected indentation")
+				return err
+			elif self.indent < self.expected_indent and not self.can_dedent:
+				err:CmdError = CmdError(reading_tk, msg="Abrupt dedentation")
+				return err
+
 			return cmd
 
-		return CmdError(msg="Undefined token '%s'" % self.token_spy())
+		err:CmdError = CmdError(reading_tk, msg="Undefined token '%s'"%reading_tk)
+		return err
 
 	# =============================================================================
 	# Parse Misc
 	# =============================================================================
 
-	def parse_name(self) -> Command:
-		token:Dict = self.token_spy()
+	def p_empty(self) -> Command:
+		return CmdEmpty()
 
-		if token[0].isalpha() or token[0] == "_":
+	def p_name(self) -> Command:
+		token:Token = self.token_spy()
+
+		if token.text[0].isalpha() or token.text[0] == "_":
 			use:bool = True
 
 			i:int = 0
 			char:str = ""
-			while i < len(token):
-				char = token[i:i+1]
+			while i < len(token.text):
+				char = token.text[i:i+1]
 				if not char.isalnum() and char != "_":
 					use = False
 					break
@@ -141,51 +204,56 @@ class Parser:
 			if use:
 				return CmdIdentifier(value=self.token_next())
 
-		return CmdError(msg="Name not valid.")
+		return CmdEmpty()
 
 	# =============================================================================
 	# Parse Expression
 	# =============================================================================
 
-	def parse_expression(self) -> Command:
-		return self.parse_expr_sub_l()
+	def p_expr_start(self) -> Command:
+		return self.eoe(left=self.p_expr_sub, 
+			cmd_type=CmdTypes.BINARY_EXPRESSION)
 
-	def parse_expr_sub_l(self) -> Command:
-		return self.tmplt_express_ex_op_ex(self.parse_expr_add_l, self.parse_expr_sub_r)
-	def parse_expr_sub_r(self) -> Command:
-		return self.tmplt_express_ex_op_ex_right(self.parse_expr_add_l, self.parse_expr_sub_r, "-")
+	def p_expr_sub(self) -> Command:
+		return self.eoe(left=self.p_expr_add, right=self.p_expr_start, 
+				op="-", cmd_type=CmdTypes.BINARY_EXPRESSION)
 
-	def parse_expr_add_l(self) -> Command:
-		return self.tmplt_express_ex_op_ex(self.parse_expr_div_l, self.parse_expr_add_r)
-	def parse_expr_add_r(self) -> Command:
-		return self.tmplt_express_ex_op_ex_right(self.parse_expr_div_l, self.parse_expr_add_r, "+")
+	def p_expr_add(self) -> Command:
+		return self.eoe(left=self.p_expr_divi, right=self.p_expr_start, 
+			op="+",	cmd_type=CmdTypes.BINARY_EXPRESSION)
 
-	def parse_expr_div_l(self) -> Command:
-		return self.tmplt_express_ex_op_ex(self.parse_expr_mult_l, self.parse_expr_div_r)
-	def parse_expr_div_r(self) -> Command:
-		return self.tmplt_express_ex_op_ex_right(self.parse_expr_mult_l, self.parse_expr_div_r, "/")
+	def p_expr_divi(self) -> Command:
+		return self.eoe(left=self.p_expr_mult, right=self.p_expr_start, 
+			op="/",	cmd_type=CmdTypes.BINARY_EXPRESSION)
 
-	def parse_expr_mult_l(self) -> Command:
-		return self.tmplt_express_ex_op_ex(self.parse_expr_paren, self.parse_expr_mult_r)
-	def parse_expr_mult_r(self) -> Command:
-		return self.tmplt_express_ex_op_ex_right(self.parse_expr_paren, self.parse_expr_mult_r, "*")
+	def p_expr_mult(self) -> Command:
+		return self.eoe(left=self.p_expr_paren, right=self.p_expr_start, 
+			op="*", cmd_type=CmdTypes.BINARY_EXPRESSION)
 
-	def parse_expr_paren(self) -> Command:
-		return self.tmplt_express_op_ex_op(self.parse_expr_prime, self.parse_expression, "(", ")")
+	def p_expr_paren(self) -> Command:
+		return self.eoe(left=self.p_expr_literal, right=self.p_expr_start, \
+			pre_op="(", pos_op=")", cmd_type=CmdTypes.BINARY_EXPRESSION)
 
-	def parse_expr_prime(self) -> Command:
-		token:str = self.token_spy()
-		if token.isnumeric():
+	def p_expr_literal(self) -> Command:
+		token:Token = self.token_spy()
+		if token.text.isnumeric():
 			self.token_next()
 			return CmdNumericLiteral(value=token)
 
-		return CmdEmpty()
+		return self.p_expr_var()
+
+	def p_expr_var(self) -> Command:
+		e1 = self.p_name()
+		if e1.is_error() or e1.is_empty():
+			return e1
+		e1.type = CmdTypes.VARIABLE
+		return e1
 
 	# =============================================================================
-	# Parse Variable
+	# Parse Variable Declaration
 	# =============================================================================
 
-	def parse_var_declaration(self) -> Command:
+	def p_vardec_start(self) -> Command:
 		if self.token_next_check("alc"):
 			command:CmdVarDeclaration = CmdVarDeclaration()
 			
@@ -198,59 +266,86 @@ class Parser:
 				i += 1
 
 			# Var options
-			command.cmd_options = self.parse_var_options()
+			command.cmd_options = self.p_vardec_opti1()
 			if command.cmd_options.is_error():
 				return command.cmd_options
 
 			# Var name
-			command.cmd_name = self.parse_name()
+			command.cmd_name = self.p_name()
 			if command.cmd_name.is_error():
 				return command.cmd_name
 
 			# Var type
 			if self.token_next_check(":"):
-				command.cmd_type = self.parse_name()
+				command.cmd_type = self.p_name()
 				if command.cmd_type.is_error():
 					return command.cmd_type
 			else:
-				return CmdError(msg="Expected a ':'")
+				err:CmdError = CmdError(self.token_spy(), msg="Variable declaration expected a ':'")
+				return err
 
 			# Var assignment
-			command.cmd_asignment = self.parse_var_assignment()
+			command.cmd_asignment = self.p_vardec_assi()
 			if command.cmd_asignment.is_error():
 					return command.cmd_asignment
 
 			if self.token_next_check(";"):
 				if length != -1:
 					return command
-				return CmdError(msg="Error in variable declaration.")
+				err:CmdError = CmdError(self.token_spy(), msg="Error in variable declaration.")
+				return err
 			else:
-				return CmdError(msg="ERROR: Variable declaration expected a ';'")
+				err:CmdError = CmdError(self.token_spy(), msg="Variable declaration was not closed with a ';'")
+				return err
 
 		return CmdEmpty()
 		
-	def parse_var_assignment(self) -> Command:
-		return self.tmplt_express_ex_op_ex_right(self.parse_expression, self.parse_var_assignment, "=")
+	def p_vardec_assi(self) -> Command:
+		return self.eoe(self.p_expr_start, self.p_vardec_assi,
+				op="=", cmd_type=CmdTypes.ASSIGNMENT)
 
-	def parse_var_options(self) -> Command:
-		return self.tmplt_express_op_ex_op(self.parse_empty, self.parse_var_option, "(", ")")
+	def p_vardec_opti1(self) -> Command:
+		return self.eoe(self.p_empty, self.p_vardec_opti2,
+				pre_op="(", pos_op=")", cmd_type=CmdTypes.DECLARATION)
 
-	def parse_var_option(self) -> Command:
+	def p_vardec_opti2(self) -> Command:
 		keys:list = []
 		i:int = self.cursor+1
 		while i != len(self.tokens):
-			token:str = self.tokens[i]
+			token:Token = self.tokens[i]
 			if token == "static" or token == "const":
 				keys.append(token)
 				self.token_next()
-			else:
+			elif token == ")":
 				break
+			else:
+				err:CmdError = CmdError(token, msg="Invalid keyword for variable declaration '{}'".format(token))
+				return err
 			i += 1
 
 		if len(keys) != 0:
 			return CmdTokenList(keys=keys)
 
-		return CmdError(msg="Error in parse option.")
+		err:CmdError = CmdError(self.token_spy(), msg="Error in parse option.")
+		return err
 
-	def parse_empty(self) -> Command:
-		return CmdEmpty()
+if __name__ == "__main__":
+	l = Lexer()
+	p = Parser()
+
+	script = "1 + 5 * 5 * (3 / 2 - 4 / 1 + 1) - 1 / 8"
+	script = """
+	
+	alc new_var:int = 5;
+
+	alc new_var:int = 5;
+
+
+ """
+
+	tokens = l.tokenize(script)
+	parsed = p.parse(tokens)
+
+	print("Script", script)
+
+	print("Parsed", str(parsed))

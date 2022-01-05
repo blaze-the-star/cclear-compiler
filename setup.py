@@ -13,7 +13,7 @@ setup(
 	install_requires=requirements,
 	entry_points={
 		"console_scripts":[
-			"cclr = cclr.entry:main"
+			"cclr = cclr_py_scripts.entry:main"
 		]
 	}
 )
