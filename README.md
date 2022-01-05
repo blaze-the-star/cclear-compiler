@@ -5,38 +5,34 @@ I'm looking for anyone who may have an opinion on the syntax, especially junior 
 
 ## Roadmap
 
-- [X] Variable declarations
-- [ ] If statements
-- [ ] Functions
-- [ ] Classes
-- [ ] Inherits / Compiler instructions
+- [X] Basic grammar (Variables, state controls, classes, etr)
+- [ ] Compiler instructions / inherits
 - [ ] Good error messages
-- [ ] Automatically handle C++ compilation
+- [ ] Option to automatically handle C++ compilation
+- [ ] Option to build .cclr files from .cpp files
 
-
-## Installation
+## Installation / Running
 
 Installation assumes you already have *python3* and *pip3* installed.
+First you must clone the git repository and install the repository.
 ```
 git clone git@github.com:blaze-the-star/cclear-compiler.git
 cd cclear-compiler
-pip3 install -r requirements.txt
+pip3 install .
 ```
-
-## Run Compiler
-
-To compile a *.cclr* file to *.cpp* and *.h* files run the following command.
-
+After that you will be able to build a CClear file with the following command.
 ```
-python3 Compiler.py -s you_script.cclr
+cclr build you_script.cclr
 ```
-
-By default this will create a *\_\_cclearcache\_\_* folder with all of the *.cpp* and *.h* files at your terminal's current directory. To change where this folder is generated you can use *-w* to specify the folder in which to generate the *\_\_cclearcache\_\_* folder, ideally your project folder.
-
+If you want to build all CClear files in a path then you can use the `-r` option to recursively loop through all files and folders in the specified directory.
 ```
-python3 Compiler.py -s you_script.cclr -w optionaly_add_a/path_to/your_workspace
+cclr build FolderTo/YourScripts -r
 ```
-With that the C++ code is ready to be compiled!
+If you want to know what else you can do use the `--help` option.
+```
+cclr --help
+cclr build --help
+```
 
 ## Code Example
 

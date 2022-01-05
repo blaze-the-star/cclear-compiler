@@ -1,7 +1,12 @@
 
+*.swp
+
 # Python
 __pycache__
 
 # CClear
 __cclrcach__
 ExampleProject/__cclrcach__
+
+# Sync
+*.sync*
