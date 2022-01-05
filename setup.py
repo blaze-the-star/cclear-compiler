@@ -6,7 +6,7 @@ with open("requirements.txt", "r") as file:
 
 setup(
 	name="cclr",
-	version="0.0.0B",
+	version="0.0.1B",
 	author="Blaze the Star",
 	author_email="startheblaze@gmail.com",
 	packages=find_packages(),
