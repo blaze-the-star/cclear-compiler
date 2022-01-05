@@ -5,7 +5,7 @@ I'm looking for anyone who may have an opinion on the syntax, especially junior 
 
 ## Roadmap
 
-- [X] Basic syntax (Variables, state controls, classes, etr)
+- [X] Basic grammar (Variables, state controls, classes, etr)
 - [ ] Compiler instructions / inherits
 - [ ] Good error messages
 - [ ] Option to automatically handle C++ compilation
@@ -14,18 +14,24 @@ I'm looking for anyone who may have an opinion on the syntax, especially junior 
 ## Installation / Running
 
 Installation assumes you already have *python3* and *pip3* installed.
+First you must clone the git repository and install the repository.
 ```
 git clone git@github.com:blaze-the-star/cclear-compiler.git
 cd cclear-compiler
 pip3 install .
 ```
-With done you can now compile a .cclr file with the following command:
+After that you will be able to build a CClear file with the following command.
 ```
-cclr build -s you_script.cclr
+cclr build you_script.cclr
 ```
-Or if you'd rather build all the files under a folder recursively you can use this next command:
+If you want to build all CClear files in a path then you can use the `-r` option to recursively loop through all files and folders in the specified directory.
 ```
-cclr build -r FolderTo/YourScripts
+cclr build FolderTo/YourScripts -r
+```
+If you want to know what else you can do use the `--help` option.
+```
+cclr --help
+cclr build --help
 ```
 
 ## Code Example
