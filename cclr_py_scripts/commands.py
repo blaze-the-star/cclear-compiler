@@ -2,15 +2,15 @@
 from enum import IntEnum, auto
 
 try:
-	from cclr_py_scripts.lexer import Token
-except:
 	from lexer import Token
-
+except:
+	from cclr_py_scripts.lexer import Token	
 
 class CmdTypes(IntEnum):
 	ERROR:int				= auto()
 	EMPTY:int				= auto()
 	SCRIPT:int				= auto()
+	CODE_BLOCK:int			= auto()
 	IDENTIFIER:int			= auto()
 	BINARY_EXPRESSION:int	= auto()
 	NUMERIC_LITERAL:int		= auto()
@@ -18,6 +18,9 @@ class CmdTypes(IntEnum):
 	VARIABLE:int			= auto()
 	ASSIGNMENT:int			= auto()
 	DECLARATION:int			= auto()
+	FLOW_START:int			= auto()
+	FLOW_BLOCK:int			= auto()
+	FLOW_STATMENT:int		= auto()
 	NO_TYPE:int				= auto()
 	
 
@@ -26,20 +29,27 @@ class CmdEmpty: pass
 
 class Command:
 	type:int = CmdTypes.NO_TYPE
-	scope:int = CmdTypes.NO_TYPE
+	indent:int = -1
 
-	def __init__(self, type:int=-1, scope:int=-1, msg:str="") -> None:
+	def __init__(self, type:int=-1, indent:str=-1) -> None:
 		if type != -1:
 			self.type = type
+			self.indent = indent
 
 		if self.type == CmdTypes.ERROR:
 			breakpoint()
 
-		self.scope = scope
-		self.message = msg
-
 	def __str__(self) -> str:
 		return "<Command, type:%s>" % self.type
+
+	def first_token(self) -> Token:
+		breakpoint()
+		assert(False, "Implement this!")
+
+	def get_line(self) -> int: # Starting line of this command
+		breakpoint()
+		assert(False, "Implement this!")
+		return -1
 
 	def is_error(self) -> bool:
 		return self.type == CmdTypes.ERROR
@@ -119,11 +129,11 @@ class CmdError(Command):
 	def __init__(self, token:Token, msg:str="") -> None:
 		self.msg = msg
 		self.token = token
-		print(str(self))
-		breakpoint()
+		#print(str(self))
+		raise ParserException(str(self))
 
 	def __str__(self) -> str:
-		return "Error in line %s col %s : %s"%(self.token.row, self.token.col, self.msg)
+		return "[Error on line %s col %s - %s]"%(self.token.row, self.token.col, self.msg)
 
 class CmdGroup(Command):
 	left:Command = CmdEmpty()
@@ -132,13 +142,16 @@ class CmdGroup(Command):
 	pos_op:str = "NA"
 	op:str = "NA"
 
-	def __init__(self, type:int=CmdTypes.NO_TYPE, left:Command=CmdEmpty(), right:Command=CmdEmpty(), pre_op:str="NA", pos_op:str="NA", op:str="NA") -> None:
+	def __init__(self, type:int=CmdTypes.NO_TYPE, left:Command=CmdEmpty(),		\
+		right:Command=CmdEmpty(), pre_op:str="NA", pos_op:str="NA", op:str="NA",	\
+		indent:int=-1) -> None:
 		self.type = type
 		self.left = left
 		self.right = right
 		self.pre_op = pre_op
 		self.pos_op = pos_op
 		self.op = op
+		self.indent = indent
 
 	def __str__(self) -> str:
 		string:str = ""
@@ -155,6 +168,28 @@ class CmdGroup(Command):
 		string = string[:-1]
 		return string
 
+	def first_token(self) -> Token:
+		if self.pre_op != "NA" and self.pre_op != "PASS":
+			return self.pre_op
+		if not self.left.is_empty():
+			return self.left.first_token()
+		if self.op != "NA" and self.op != "PASS":
+			return self.op
+		if not self.right.is_empty():
+			return self.right.first_token()
+		if self.pos_op != "NA" and self.pos_op != "PASS":
+			return self.pos_op
+
+		raise "err"
+
+	def get_line(self) -> int: # Starting line of this command
+		if not self.left.is_empty():
+			return self.left.get_line()
+		if self.op != "NA" and self.op != "PASS":
+			return self.op.row
+		if not self.right.is_empty():
+			return self.right.get_line()
+
 	def source(self) -> list:
 		assert(False, "Not implemented")
 		return [self.pre_op] + self.left.source() + [self.pos_op]
@@ -163,8 +198,9 @@ class CmdIdentifier(Command):
 	type:int = CmdTypes.IDENTIFIER
 	value:Token = None
 
-	def __init__(self, value:str="") -> None:
+	def __init__(self, value:str="", indent:int=-1) -> None:
 		self.value = value
+		self.indent = indent
 
 	def __str__(self) -> str:
 		return self.value.text
@@ -176,27 +212,40 @@ class CmdNumericLiteral(Command):
 	type:int = CmdTypes.NUMERIC_LITERAL
 	value:Token = ""
 
-	def __init__(self, value:Token="") -> None:
+	def __init__(self, value:Token="", indent:int=-1) -> None:
 		self.value = value
+		self.indent = indent
 
 	def __str__(self) -> str:
 		return str(self.value)
 
+	def first_token(self) -> Token:
+		return self.value
+
+	def get_line(self) -> int: # Starting line of this command
+		return self.value.row
+
 	def source(self) -> list:
 		return [self.value]
 
-class CmdScript(Command):
+class CmdStmntArr(Command):
 	type:int = CmdTypes.SCRIPT
-	commands:list = []
+	body:list = []
+	indents:int = 0
 
-	def __init__(self, commands:list=[]) -> None:
-		self.commands = commands
+	def __init__(self, type:int=-1, commands:list=[], indents:int=0) -> None:
+		self.body = commands
+		self.type = type
+		self.indents = indents
 
 	def __str__(self) -> str:
 		ret:str = ""
-		for command in self.commands:
+		for command in self.body:
 			ret += str(command) + " "
 		return ret[:-1]
+
+	def first_token(self) -> Token:
+		return self.body[0].first_token()
 
 class CmdTokenList(Command):
 	type:int = -1
@@ -234,6 +283,9 @@ class CmdVarDeclaration(Command):
 		if not self.cmd_asignment.is_empty():
 			string += " "+str(self.cmd_asignment)
 		return string + ";\n"
+
+	def first_token(self) -> Token:
+		return self.cmd_name.value
 
 	def source(self) -> list:
 		return ["alc"] + self.cmd_options.source() + self.cmd_name.source() + \

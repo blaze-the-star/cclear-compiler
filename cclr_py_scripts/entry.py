@@ -1,7 +1,6 @@
 
 import os
 import click
-from pathlib import Path
 
 try:
 	from compiler import Compiler
@@ -12,88 +11,69 @@ except:
 	from cclr_py_scripts.parser import Parser
 	from cclr_py_scripts.lexer import Lexer
 	
-def name_from_path(path:str) -> str:
-	out_file_n:str = path.replace("/",".")
-	while out_file_n.startswith("."):
-		out_file_n = out_file_n[1:]
-	return out_file_n
-
-def get_script_paths_r(search:str="./") -> list:
-	paths:list = []
-	for dir_p, dir_n, files in os.walk(search):
-		for file_n in files:
-			if file_n.endswith(".cclr"):
-				paths.append( 
-					os.path.join(dir_p, file_n)
-				)
-	return paths
 
 # =============================================================================
 # Command Line Interface
 # =============================================================================
 
-BUILD_HR:str = "Recursively builds all .cclr scripts in the	specified folder to .cpp and .h files."
-BUILD_HC:str = "The cache folder where all compiled .cpp and .h files are saved."
-BUILD_HL:str = "Rather than store the built .cpp and .h files in a __cclrcache__ folder store them in the same directory as their source .cclr files."
+class Thing:
+	pass
 
 @click.group()
 def main() -> None:
 	pass
 
+def build2( script:str, workspace:str="./", recursive:str="./", localoutput:bool=False ) -> None:
+	build( script, workspace, recursive, localoutput )
+
 @main.command("build")
 @click.argument("script", type=click.Path(exists=True))
-@click.option("-r", "--recursive", is_flag=True, help=BUILD_HR)
-@click.option("-c", "--cache", type=click.Path(exists=False),				\
-	default="./__cclr__", show_default=True, help=BUILD_HC )
-@click.option("-l", "--localoutput", is_flag=True, help=BUILD_HL)
+@click.option("-r", "--recursive", type=click.Path(exists=False),   \
+	default="", help="Recursively builds all .cclr scripts in the   \
+	specified folder to .cpp and .h files.")
+@click.option("-w", "--workspace", type=click.Path(exists=True),    \
+	default="./", help="The folder where __cclrcache__ will be      \
+	stored. (Defaults to current directory)")
+@click.option("-l", "--localoutput", type=bool, default=False,      \
+	help="Rather than store the built .cpp and .h files in a    \
+	__cclrcache__ folder store them in the same directory as    \
+	their source .cclr files.")
+def _build( script:str="./ExampleProject/script.cclr",              \
+	workspace:str="./", recursive:str="", localoutput:bool=False\
+	) -> None:
+	build( script, workspace, recursive, localoutput)
 
-def _build(script:str, cache:str, recursive:bool, localoutput:bool) -> None:
-	build( script, cache, recursive, localoutput)
-
-def build(script:str, cache:str, recursive:bool, localoutput:bool) -> None:
+def build( script:str, workspace:str="./", recursive:str="./",      \
+	localoutput:bool=False ) -> None:
 	"""
 	Compiles a .cclr script to .cpp and .h files. The .cpp and .h files are then saved to __cclrcache__ in the current directory.
 	"""
-	s_paths:list = []
-	if recursive:
-		s_paths = get_script_paths_r(script)
-	else:
-		s_paths = [script]
+	assert(script.endswith(".cclr"))
 
-	scripts:list = []
-	for s_path in s_paths:
-		with open(s_path, "r") as file:
-			scripts.append( file.read() )
+	dir, file_name = os.path.split(script)
+	cache_dir:str = os.path.join(workspace, "__cclrcach__")
+	out_cpp:str = file_name[0:-4]+"cpp"
+	out_h:str = file_name[0:-4]+"h"
 
-	# Create __cclrcache__
-	if not localoutput and not os.path.isdir(cache):
-		Path(cache).mkdir(parents=True)
-	#	os.mkdir(cache)
+	source_code:int = ""
+	with open(os.path.join(".",script), "r") as file:
+		source_code = file.read()
 
 	lx = Lexer()
 	ps = Parser()
-	cm = Compiler()
-	for path, script in zip(s_paths, scripts):
-		tokens:list = lx.tokenize(script)
-		commands:list = ps.parse(tokens)
-		cpp_code:str = cm.compile(commands)
-		h_code:str = cm.compile(commands)
+	c = Compiler()
+  
+	tokens:list = lx.tokenize(source_code)
+	commands:list = ps.parse(tokens)
+	cpp_code:str = c.compile(commands)
 
-		# Save
-		if localoutput:
-			with open(path[:-4]+"cpp", "w") as file:
-				file.write(cpp_code)
-			with open(path[:-4]+"h", "w") as file:
-				file.write(h_code)
-			print("Compiled '{}' to '{}'".format(path, path[:-4]+"cpp/h"))
-		else:
-			out_file_n:str = name_from_path(path)
-			out_file_path:str = os.path.join(cache, out_file_n)
-			with open(out_file_path[:-4]+"cpp", "w") as file:
-				file.write(cpp_code)
-			with open(out_file_path[:-4]+"h", "w") as file:
-				file.write(h_code)
-			print("Compiled '{}' to '{}'".format(path, out_file_path[:-4]+"cpp/h"))
+	if not os.path.isdir(cache_dir):
+		os.mkdir(cache_dir)
+
+	with open( os.path.join(cache_dir,out_cpp), "w") as file:
+		file.write(cpp_code)
+	with open( os.path.join(cache_dir,out_h), "w") as file:
+		file.write("hi h")
 
 if __name__ == "__main__":
 	main()

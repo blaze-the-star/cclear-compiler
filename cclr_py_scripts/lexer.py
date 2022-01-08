@@ -18,33 +18,10 @@ class TokenTypes(IntEnum):
 	SYMBOL:int			= auto()
 	COMMENT:int			= auto()
 
-class TokenList:
-	tokens:list = []
-
-	def __bool__(self):
-		return self.tokens.__bool__()
-
-	def __getitem__(self, key):
-		return self.tokens[key]
-
-	def __init__(self, tokens:list=[]) -> None:
-		self.tokens = tokens
-
-	def __iter__(self):
-		return self.tokens.__iter__()
-
-	def __len__(self):
-		return self.tokens.__len__()
-
-	def __setitem__(self, key, value):
-		self.tokens[key] = value
-
-	def __sizeof__(self) -> int:
-		return self.tokens.__sizeof__()
-
+class TokenList(list):
 	def __str__(self) -> str:
 		string:str = ""
-		for token in self.tokens:
+		for token in self:
 			string += str(token) + " "
 		return string[:-1]
 
@@ -53,6 +30,7 @@ class Token:
 	idx:int = -1
 	row:int = -1
 	col:int = -1
+	indent:int = -1
 	type:int = TokenTypes.NONE
 
 	def __add__(self, add_by:str) -> str:
@@ -73,11 +51,12 @@ class Token:
 		else:
 			return False
 
-	def __init__(self, text:str="", idx:int=-1, row:int=-1, col:int=-1, type:int=TokenTypes.NONE) -> None:
+	def __init__(self, text:str="", idx:int=-1, row:int=-1, col:int=-1, indent:int=-1, type:int=TokenTypes.NONE) -> None:
 		self.text = text
 		self.idx = idx
 		self.row = row
 		self.col = col
+		self.indent = indent
 		self.type = type
 
 	def __str__(self) -> str:
@@ -101,7 +80,7 @@ class Lexer:
 		re.compile(r"[+\-*/|^%]")									:TokenTypes.SYMBOL,		# Matches any math symbol
 		re.compile(r"(>=|<=|==|[!&|?><=])")							:TokenTypes.SYMBOL,		# Matches any logic symbol
 		re.compile(r"[:;]")											:TokenTypes.SYMBOL,		# Matches end statement or type specifier symbol
-		re.compile(r" ")											:TokenTypes.NONE,		# Do NOT match spacescr,
+		re.compile(r" ")											:TokenTypes.NONE,		# Match space,
 		re.compile(r".+?(?:\b)")									:TokenTypes.ERROR,		# Matches any token for an error,
 	}
 
@@ -125,32 +104,38 @@ class Lexer:
 			i:int = 0
 			r:int = 0 # Row
 			c:int = 0 # Column
+			ind:int = 0 # Indent
 			while i != len(script):
-				old_i:int = i
 				resulting_tk:Token = Token()
 				for pattern, type in self.codes.items():
 					m = pattern.match(script, i)
 					if m:
 						text_length:int = m.end(0) - m.start(0)
-						test2 = text_length
-
-						if type != TokenTypes.NONE:
-							resulting_tk = Token(script[i:i+text_length], i, r, c, type)
-							tokens.append( resulting_tk )
+						matched:str = script[i:i+text_length]
 
 						i += text_length
 						c += text_length
 
-						if type == TokenTypes.NEWLINE:
+						if type == TokenTypes.INDENT:
+							# TODO: Handle tabs and spaces
+							ind += text_length
+						elif type == TokenTypes.NEWLINE:
 							c = 0
+							ind = 0
 							r += 1
+						elif type == TokenTypes.NONE:
+							pass
+						elif type != TokenTypes.NONE:
+							resulting_tk = Token(matched, i, r+1, c, ind, type)
+							tokens.append( resulting_tk )
 
 						break
 
-				if tokens[-1].type == TokenTypes.ERROR:
+				if len(tokens)!=0 and tokens[-1].type == TokenTypes.ERROR:
 					print("Error on line {} column {} : Invalid token '{}'"	\
 						.format(resulting_tk.row,resulting_tk.col, 			\
 						resulting_tk.text))
+					breakpoint()
 					i += 1
 					c += 1
 					return TokenList([])

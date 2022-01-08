@@ -4,3 +4,6 @@ alc(const) only_const:int = 435;
 alc(static) only_static:int = 2 + 2 * (84+3);
 alc as:int;
 alc dff:int = 2;
+
+if 5+5;
+	alc var:string;
