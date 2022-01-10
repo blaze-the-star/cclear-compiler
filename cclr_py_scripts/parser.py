@@ -14,16 +14,18 @@ from tqdm import tqdm
 
 class ParserException(Exception):
 	msg:str = ""
-	script:tuple = tuple()
+	script:tuple = tuple(("",""))
 
 	def __init__(self, msg:str="") -> None:
 		self.msg = msg
 
 	def code_line(self, code:str, start:int, end:int, highlight:int=-1) -> str:
-		start = max(0,start)
-
 		buf = io.StringIO(code)
-		for i in range(start):
+
+		start = max(1,start)
+		end = max(1,end)
+
+		for i in range(start-1):
 			buf.readline()
 
 		res = ""
@@ -31,13 +33,13 @@ class ParserException(Exception):
 			h:str = "   "
 			if highlight == i:
 				h = ">> "
-			res += f"{h}{str(i).ljust(6)}|  {buf.readline()}"
+			res += f"{h}{str(i).ljust(6)}|  {buf.readline()[:-1]}\n"
 
 		return res[:-1]
 
 	def message(self, token:Token, script:tuple) -> str:
-		line = token.row-1
-		return f"\n{self.code_line(script[1], line-2,line+2, line)}\n--------- \n[Error in {script[0]} on line {line} col {token.col} - {self.msg}]\n"
+		line = token.row
+		return f"{''.ljust(80,'-')}\n{self.code_line(script[1], line-2,line+2, line)}\n{''.ljust(80,'-')} \n[Error in {script[0]} on line {line} col {token.col+1} - {self.msg}]\n"
 
 class Parser(object):
 
@@ -230,6 +232,7 @@ class Parser(object):
 				self.expected_indent -= 1
 				break
 			else:
+				self.cursor += 1
 				raise( ParserException("Indent error; TODO: Put a proper message here (Parser.p_scope)") )
 
 		if len(body) == 0:
@@ -509,7 +512,7 @@ if __name__ == "__main__":
 	script = "1 + 5 * 5 * (3 / 2 - 4 / 1 + 1) - 1 / 8"
 	script = """
 alc new_var:int = 5;
-alc new_var2:int = 5;
+alc new_var2:int = 5 + 5 * 4 / (2-6);
 if 5;
 	alc new1:int;
 	if new1;

@@ -122,9 +122,9 @@ class CmdEmpty(Command):
 class CmdGroup(Command):
 	left:Command = CmdEmpty()
 	right:Command = CmdEmpty()
-	pre_op:str = "NA"
-	pos_op:str = "NA"
-	op:str = "NA"
+	pre_op:Token = Token()
+	pos_op:Token = Token()
+	op:Token = Token()
 
 	def __str__(self) -> str:
 		string:str = ""
@@ -140,6 +140,18 @@ class CmdGroup(Command):
 			string += f"{self.pos_op} "
 		string = string[:-1]
 		return string
+
+	def cpp(self) -> str:
+		mid:str = ""
+		if self.op != "":
+			mid = f" {self.op} "
+		return f"{self.pre_op}{self.left.cpp()}{mid}{self.right.cpp()}{self.pos_op}"
+
+	def hpp(self) -> str:
+		mid:str = ""
+		if self.op != "":
+			mid = f" {self.op} "
+		return f"{self.pre_op}{self.left.hpp()}{mid}{self.right.hpp()}{self.pos_op}"
 
 	def first_token(self) -> Token:
 		if self.pre_op != "NA" and self.pre_op != "PASS":
@@ -217,7 +229,7 @@ class CmdNumericLiteral(Command):
 		return f"{self.value}"
 
 	def hpp(self) -> str:
-		return self.hpp()
+		return f"{self.value}"
 
 	def first_token(self) -> Token:
 		return self.value

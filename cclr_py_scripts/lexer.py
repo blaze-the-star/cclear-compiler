@@ -65,6 +65,8 @@ class Token:
 		return f"'{self.text}', {self.type.__repr__()}"
 
 	def __str__(self) -> str:
+		if self.text == "NA" or self.text == "PASS":
+			return ""
 		return self.text
 
 class Lexer:

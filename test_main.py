@@ -2,7 +2,6 @@
 import unittest
 from cclr_py_scripts.lexer import Lexer, TokenList
 from cclr_py_scripts.parser import Parser
-from cclr_py_scripts.compiler import Compiler
 from cclr_py_scripts.commands import *
 
 cclr1:str = """
@@ -155,91 +154,6 @@ class TestParser(unittest.TestCase):
 		self.assertEqual(
 			str(parsed2), self.CODE_ALC_ADV
 		)
-
-class TestCompiler(): #TestCompiler(unittest.TestCase):
-
-	cclr1:str = """
-alc thing:stuff;
-if 5;
-	alc something:dat;
-"""
-	cpp1:str = """
-stuff thing;
-if (5):
-{
-	dat something;
-}
-"""
-	clr2:str = """
-alc new_var:int;
-alc new_var:int = 2 * 5 - (2 + 5 / 4); alc new_var2:int = (2+2+2+2+2+2);
-"""
-	cpp2:str = """
-int new_var;
-int new_var = 2 * 5 - ( 2 + 5 / 4 );
-int new_var2 = ( 2 + 2 + 2 + 2 + 2 + 2 );
-"""
-	clr3:str = """
-if 5;
-	if 6;
-		alc num:int;
-elif 7*9;
-	alc is_true:bool;
-elif 856;
-	alc is_true2:bool;
-else;
-	if 99;
-		alc story:str;
-"""
-	cpp3:str = """
-if (5):
-{
-	if (6):
-	{
-		int num;
-	}
-}
-elif (7 * 9):
-{
-	bool is_true;
-}
-elif (856):
-{
-	bool is_true2;
-}
-else:
-{
-	if (99):
-	{
-		str story;
-	}
-}
-"""
-
-	def test_compiler(self) -> None:
-		l = Lexer()
-		p = Parser()
-		c = Compiler()
-		
-		compiled = c.compile( p.parse( l.tokenize(self.cclr1) ) )
-		self.assertEqual(compiled, self.cpp1)
-
-	def test_compiler2(self) -> None:
-		l = Lexer()
-		p = Parser()
-		c = Compiler()
-
-		compiled = c.compile( p.parse( l.tokenize(self.clr2) ) )
-		print(f"compile '{compiled}'")
-		self.assertEqual(compiled, self.cpp2)
-
-	def test_if_elif_else(self) -> None:
-		l = Lexer()
-		p = Parser()
-		c = Compiler()
-
-		compiled = c.compile( p.parse( l.tokenize(self.clr3) ) )
-		self.assertEqual(compiled, self.cpp3)
 
 if __name__ == "__main__":
 	unittest.main()
