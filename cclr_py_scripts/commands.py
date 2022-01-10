@@ -1,5 +1,6 @@
 
 from enum import IntEnum, auto
+from dataclasses import dataclass, field
 
 try:
 	from lexer import Token
@@ -9,38 +10,44 @@ except:
 class CmdTypes(IntEnum):
 	ERROR:int				= auto()
 	EMPTY:int				= auto()
+
 	SCRIPT:int				= auto()
 	CODE_BLOCK:int			= auto()
-	IDENTIFIER:int			= auto()
+
+	IDENTIFIER:int			= auto() # Delete?
+
 	BINARY_EXPRESSION:int	= auto()
 	NUMERIC_LITERAL:int		= auto()
-	OBJ_TYPE:int			= auto()
-	VARIABLE:int			= auto()
+
+	TYPE_NAME:int			= auto()
+	VARIABLE_NAME:int		= auto()
+	MTHD_NAME:int			= auto()
+	PARAMS:int				= auto()
+	VAR_TYPE_SPECI:int		= auto()
+
 	ASSIGNMENT:int			= auto()
 	DECLARATION:int			= auto()
+
 	FLOW_START:int			= auto()
 	FLOW_BLOCK:int			= auto()
 	FLOW_STATMENT:int		= auto()
+
+	MTHD_BLOCK:int			= auto()
+	MTHD_STATMENT:int		= auto()
+	MTHD_PARAMS:int			= auto()
+
 	NO_TYPE:int				= auto()
 	
-
-class CmdEmpty: pass
-
-
+@dataclass
 class Command:
 	type:int = CmdTypes.NO_TYPE
 	indent:int = -1
 
-	def __init__(self, type:int=-1, indent:str=-1) -> None:
-		if type != -1:
-			self.type = type
-			self.indent = indent
-
-		if self.type == CmdTypes.ERROR:
-			breakpoint()
+	def __bool__(self) -> bool:
+		return not self.is_empty()
 
 	def __str__(self) -> str:
-		return "<Command, type:%s>" % self.type
+		return f"<'__str__' was not implemented in {self.__class__.__name__}>"
 
 	def first_token(self) -> Token:
 		breakpoint()
@@ -51,6 +58,12 @@ class Command:
 		assert(False, "Implement this!")
 		return -1
 
+	def indents_str(self) -> str:
+		string = ""
+		for x in range(self.indent):
+			string += "\t"
+		return string
+
 	def is_error(self) -> bool:
 		return self.type == CmdTypes.ERROR
 
@@ -60,81 +73,52 @@ class Command:
 	def source(self) -> list:
 		return []
 
-class CommandList:
-	commands:list = []
-
-	def __bool__(self):
-		return self.commands.__bool__()
-
-	def __getitem__(self, key):
-		return self.commands[key]
-
-	def __init__(self, commands:list=[]) -> None:
-		self.commands = commands
-
-	def __iter__(self):
-		return self.commands.__iter__()
-
-	def __len__(self):
-		return self.commands.__len__()
-
-	def __setitem__(self, key, value):
-		self.commands[key] = value
-
-	def __sizeof__(self) -> int:
-		return self.commands.__sizeof__()
-
-	def __str__(self) -> str:
-		string:str = ""
-		for cmd in self.commands:
-			string += str(cmd) + " "
-		return string[:-1]
-
-class CmdBinaryExpression(Command):
-	type:int = CmdTypes.BINARY_EXPRESSION
-	op:Token = ""
-	left:Command = CmdEmpty()
-	right:Command = CmdEmpty()
-
-	def __init__(self, op:Token="", left:Command=CmdEmpty(), right:Command=CmdEmpty()) -> None:
-		self.op = op
-		
-		if left != None:
-			self.left = left
-
-		if right != None:
-			self.right = right
-
-	def __str__(self) -> str:
-		string:str = ""
-		if not self.left.is_empty():
-			string += str(self.left) + " "
-		return string + str(self.op) +" "+ str(self.right)
-
-	def source(self) -> list:
-		return self.left.source() + [self.op] + self.right.source()
-
+@dataclass
 class CmdEmpty(Command):
-	type:int = CmdTypes.EMPTY
-	cursor:int = -1
+	
+	def __post_init__(self) -> None:
+		self.type = CmdTypes.EMPTY
 
 	def __str__(self) -> str:
 		return ""
 
-class CmdError(Command):
-	type:int = CmdTypes.ERROR
-	msg:str = ""
-	token:Token = None
+	def cpp(self) -> str:
+		return ""
 
-	def __init__(self, token:Token, msg:str="") -> None:
-		self.msg = msg
-		self.token = token
-		#print(str(self))
-		raise ParserException(str(self))
+	def hpp(self) -> str:
+		return ""
 
-	def __str__(self) -> str:
-		return "[Error on line %s col %s - %s]"%(self.token.row, self.token.col, self.msg)
+#class CommandList:
+#	commands:list = []
+#
+#	def __bool__(self):
+#		return self.commands.__bool__()
+#
+#	def __getitem__(self, key):
+#		return self.commands[key]
+#
+#	def __init__(self, commands:list=[]) -> None:
+#		self.commands = commands
+#
+#	def __iter__(self):
+#		return self.commands.__iter__()
+#
+#	def __len__(self):
+#		return self.commands.__len__()
+#
+#	def __setitem__(self, key, value):
+#		self.commands[key] = value
+#
+#	def __sizeof__(self) -> int:
+#		return self.commands.__sizeof__()
+#
+#	def __str__(self) -> str:
+#		string:str = ""
+#		for cmd in self.commands:
+#			string += str(cmd) + " "
+#		return string[:-1]
 
+@dataclass
 class CmdGroup(Command):
 	left:Command = CmdEmpty()
 	right:Command = CmdEmpty()
@@ -142,29 +126,18 @@ class CmdGroup(Command):
 	pos_op:str = "NA"
 	op:str = "NA"
 
-	def __init__(self, type:int=CmdTypes.NO_TYPE, left:Command=CmdEmpty(),		\
-		right:Command=CmdEmpty(), pre_op:str="NA", pos_op:str="NA", op:str="NA",	\
-		indent:int=-1) -> None:
-		self.type = type
-		self.left = left
-		self.right = right
-		self.pre_op = pre_op
-		self.pos_op = pos_op
-		self.op = op
-		self.indent = indent
-
 	def __str__(self) -> str:
 		string:str = ""
 		if self.pre_op != "NA":
-			string += self.pre_op + " "
+			string += f"{self.pre_op} "
 		if not self.left.is_empty():
 			string += str(self.left) + " "
 		if self.op != "NA":
-			string += self.op + " "
+			string += str(self.op) + " "
 		if not self.right.is_empty():
 			string += str(self.right) + " "
 		if self.pos_op != "NA":
-			string += self.pos_op + " "
+			string += f"{self.pos_op} "
 		string = string[:-1]
 		return string
 
@@ -194,65 +167,28 @@ class CmdGroup(Command):
 		assert(False, "Not implemented")
 		return [self.pre_op] + self.left.source() + [self.pos_op]
 
-class CmdIdentifier(Command):
-	type:int = CmdTypes.IDENTIFIER
-	value:Token = None
-
-	def __init__(self, value:str="", indent:int=-1) -> None:
-		self.value = value
-		self.indent = indent
+@dataclass
+class CmdToken(Command):
+	token:Token = None
 
 	def __str__(self) -> str:
-		return self.value.text
+		return self.token.text
 
-	def source(self) -> list:
-		return [self.value]
+	def cpp(self) -> str:
+		return str(self.token)
 
-class CmdNumericLiteral(Command):
-	type:int = CmdTypes.NUMERIC_LITERAL
-	value:Token = ""
-
-	def __init__(self, value:Token="", indent:int=-1) -> None:
-		self.value = value
-		self.indent = indent
-
-	def __str__(self) -> str:
-		return str(self.value)
+	def hpp(self) -> str:
+		return str(self.token)
 
 	def first_token(self) -> Token:
-		return self.value
-
-	def get_line(self) -> int: # Starting line of this command
-		return self.value.row
+		return self.token
 
 	def source(self) -> list:
-		return [self.value]
+		return [self.token]
 
-class CmdStmntArr(Command):
-	type:int = CmdTypes.SCRIPT
-	body:list = []
-	indents:int = 0
-
-	def __init__(self, type:int=-1, commands:list=[], indents:int=0) -> None:
-		self.body = commands
-		self.type = type
-		self.indents = indents
-
-	def __str__(self) -> str:
-		ret:str = ""
-		for command in self.body:
-			ret += str(command) + " "
-		return ret[:-1]
-
-	def first_token(self) -> Token:
-		return self.body[0].first_token()
-
+@dataclass
 class CmdTokenList(Command):
-	type:int = -1
-	keys:list = []
-
-	def __init__(self, keys:list=[]) -> None:
-		self.keys = keys
+	keys:list[Token] = field(default_factory=list[Token])
 
 	def __str__(self) -> str:
 		ret:str = ""
@@ -264,29 +200,216 @@ class CmdTokenList(Command):
 	def source(self) -> list:
 		return self.keys
 
-class CmdVarDeclaration(Command):
-	type:int = CmdTypes.DECLARATION
-	cmd_options:Command = CmdEmpty()
-	cmd_name:Command = CmdEmpty()
-	cmd_type:Command = CmdEmpty()
-	cmd_asignment:Command = CmdEmpty()
+# =============================================================================
+# === Statements ===
+# =============================================================================
 
-	def __init__(self, cmd_options=CmdEmpty(), cmd_name=CmdEmpty(), 
-		cmd_type=CmdEmpty(), cmd_asignment=CmdEmpty()) -> None:
-		self.cmd_options = cmd_options
-		self.cmd_name = cmd_name
-		self.cmd_type = cmd_type
-		self.cmd_asignment = cmd_asignment
+class CmdBinaryExpression: pass # Pre-define
+
+@dataclass
+class CmdNumericLiteral(Command):
+	value:Token = ""
 
 	def __str__(self) -> str:
-		string:str = "alc"+str(self.cmd_options)+" "+str(self.cmd_name)+":"+str(self.cmd_type)
+		return str(self.value)
+
+	def cpp(self) -> str:
+		return f"{self.value}"
+
+	def hpp(self) -> str:
+		return self.hpp()
+
+	def first_token(self) -> Token:
+		return self.value
+
+	def get_line(self) -> int: # Starting line of this command
+		return self.value.row
+
+	def source(self) -> list:
+		return [self.value]
+
+@dataclass
+class CmdAssign(Command):
+	cmd_expr:CmdBinaryExpression = CmdEmpty()
+	equator:Token = Token()
+
+	def __str__(self) -> str:
+		return f"{self.equator} {self.cmd_expr}"
+
+	def cpp(self) -> str:
+		return f" {self.equator} {self.cmd_expr.cpp()}"
+
+	def hpp(self) -> str:
+		return f" {self.equator} {self.cmd_expr.hpp()}"
+
+	def first_token(self) -> Token:
+		return self.var_name()
+
+@dataclass
+class CmdVarTypeSpeci(Command):
+	var_name:Token = Token()
+	type_name:Token = Token()
+	op:Token = Token()
+
+	def __str__(self) -> str:
+		return f"{self.var_name}{self.op}{self.type_name}"
+
+	def cpp(self) -> str:
+		return f"{self.type_name} {self.var_name}"
+
+	def hpp(self) -> str:
+		return self.cpp()
+
+	def first_token(self) -> Token:
+		return self.var_name()
+
+@dataclass
+class CmdCodeBlk(Command):
+	body:list[Command] = field(default_factory=list[Command])
+
+	def __str__(self) -> str:
+		ret:str = ""
+		for command in self.body:
+			ret += str(command) + " "
+		return ret[:-1]
+
+	def cpp(self) -> str:
+		indents = self.indents_str()
+		string = indents+"{\n"
+		for st in self.body:
+			string += st.cpp()
+		string += str(indents)+"}\n"
+		return string
+
+	def hpp(self) -> str:
+		indents = self.indents_str()
+		string = indents+"{\n"
+		for st in self.body:
+			string += st.hpp()
+		string += str(indents)+"}\n"
+		return string
+
+	def first_token(self) -> Token:
+		return self.body[0].first_token()
+
+@dataclass
+class CmdBinaryExpression(Command):
+	op:Token = ""
+	left:Command = CmdEmpty()
+	right:Command = CmdEmpty()
+
+	def __str__(self) -> str:
+		string:str = ""
+		if not self.left.is_empty():
+			string += str(self.left) + " "
+		return string + str(self.op) +" "+ str(self.right)
+
+	def cpp(self) -> str:
+		return f"{self.left.cpp()} {self.op} {self.right.cpp()}"
+
+	def hpp(self) -> str:
+		return f"{self.left.hpp()} {self.op} {self.right.hpp()}"
+
+	def source(self) -> list:
+		return self.left.source() + [self.op] + self.right.source()
+
+@dataclass
+class CmdVarDeclaration(Command):
+	cmd_options:Command = CmdEmpty()
+	cmd_var_type_speci:CmdVarTypeSpeci = CmdEmpty()
+	cmd_asignment:Command = CmdEmpty()
+
+	def __str__(self) -> str:
+		string:str = "alc"+str(self.cmd_options)+" "+str(self.cmd_var_type_speci)
 		if not self.cmd_asignment.is_empty():
 			string += " "+str(self.cmd_asignment)
 		return string + ";\n"
 
+	def cpp(self) -> str:
+		return f"{self.indents_str()}{self.cmd_var_type_speci.cpp()}{self.cmd_asignment.cpp()};\n"
+
+	def hpp(self) -> str:
+		return f"{self.indents_str()}{self.cmd_var_type_speci.hpp()}{self.cmd_asignment.hpp()};\n"
+
 	def first_token(self) -> Token:
-		return self.cmd_name.value
+		return self.cmd_var_type_speci.left.first_token()
 
 	def source(self) -> list:
 		return ["alc"] + self.cmd_options.source() + self.cmd_name.source() + \
 			[":"] + self.cmd_type.source() + self.cmd_asignment.source() + [";"]
+
+@dataclass
+class CmdFunc(Command):
+	cmd_rtn_type:Command	= CmdEmpty()
+	cmd_name:Command		= CmdEmpty()
+	cmd_params:Command		= CmdEmpty()
+	cmd_code_blk:Command	= CmdEmpty()
+	cmd_namespace:Command	= CmdEmpty()
+
+	def cpp(self) -> str:
+		return str(self.cmd_rtn_type) + " " + str(self.cmd_name) + "(" + self.cmd_params.cpp() + ")" + "\n" + self.cmd_code_blk.cpp()
+
+	def hpp(self) -> str:
+		return str(self.cmd_rtn_type) + " " + self.cmd_namespace.hpp() + str(self.cmd_name) + "(" + self.cmd_params.cpp() + ")" + "\n"
+
+	def first_token(self) -> Token:
+		return self.cmd_rtn_type.first_token()
+
+	def source(self) -> list:
+		return f"func {self.cmd_name.source()}({self.cmd_params.source()}):{self.cmd_rtn_type.source()};\n{self.cmd_code_blk.source()}"
+
+@dataclass
+class CmdIfBlock(Command):
+	statements:list[Command] = field(default_factory=list[Command])
+
+	def cpp(self) -> str:
+		string:str = ""
+		for st in self.statements:
+			string += st.cpp()
+		return string
+
+	def hpp(self) -> str:
+		string:str = ""
+		for st in self.statements:
+			string += st.hpp()
+		return string
+
+	def first_token(self) -> Token:
+		return self.cmd_rtn_type.first_token()
+
+	def source(self) -> list:
+		string:str = ""
+		for st in self.statements:
+			string += st.cpp()
+		return string
+
+@dataclass
+class CmdIfStmnt(Command):
+	tok_if:Token = Token()
+	tok_end:Token = Token()
+	cmd_expr:Command = CmdEmpty()
+	cmd_code_blk:Command = CmdEmpty()
+
+	def cpp(self) -> str:
+		if_str = str(self.tok_if)
+		if self.tok_if == "elif":
+			if_str = "else if"
+		elif self.tok_if == "els":
+			if_str = "else"
+		expr:str = ""
+		if self.cmd_expr.cpp() != "":
+			expr = f"({self.cmd_expr.cpp()})"
+
+		return f"{self.indents_str()}{if_str} {expr}\n{self.cmd_code_blk.cpp()}"
+
+	def hpp(self) -> str:
+		expr:str = ""
+		if not self.cmd_expr.is_empty():
+			expr = f"({self.cmd_expr.cpp()})"
+		return f"{self.indents_str()}{self.tok_if} {expr}\n{self.cmd_code_blk.hpp()}"
+
+	def first_token(self) -> Token:
+		return self.cmd_rtn_type.first_token()
+
+	def source(self) -> list:
+		return f"{self.if_token} {self.cmd_expr.source()};\n{self.cmd_code_blk.source()}"

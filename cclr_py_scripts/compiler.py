@@ -15,7 +15,7 @@ from tqdm import tqdm
 
 class Compiler:
 
-	def compile( self, command:CmdStmntArr, show_pbar:bool=False ) -> str:
+	def compile( self, command:CmdCodeBlk, show_pbar:bool=False ) -> str:
 		if command.type == CmdTypes.ERROR or command.type == CmdTypes.EMPTY:
 			return ""
 
@@ -38,48 +38,58 @@ class Compiler:
 			tk:Token = command.first_token()
 			compiled += self.indent_of_token(tk)
 			cmd_options:Command = command.cmd_options
-			cmd_name:Command = command.cmd_name
-			cmd_type:Command = command.cmd_type
+			cmd_var_type_speci:Command = command.cmd_var_type_speci
 			cmd_asignment:Command = command.cmd_asignment
 			if not cmd_options.is_empty():
 				dec_option:str = ""
 				for dec_option in cmd_options.right.keys:
 					compiled += dec_option + " "
-			if not cmd_type.is_empty():
-				compiled += str(cmd_type.value) + " "
-			else:
-				assert(False)
-			if not cmd_name.is_empty():
-				compiled += str(cmd_name.value)
+			if not cmd_var_type_speci.is_empty():
+				compiled += str(cmd_var_type_speci) + " "
 			else:
 				assert(False)
 			if not cmd_asignment.is_empty():
 				compiled += " = " + str(cmd_asignment.right)
 			compiled += ";\n"
 
+		# --- If Elif and Else ---
 		elif command.type == CmdTypes.FLOW_START:
 			compiled += self.compile(command.left)
-			#compiled += "START1 ----------------------------- \n"
 			compiled += self.compile(command.right)
-			#compiled += "START2 ----------------------------- \n"
-
-
 		elif command.type == CmdTypes.FLOW_BLOCK:
 			compiled += self.compile(command.left)
-			#compiled += "BLOK1 ----------------------------- \n"
 			compiled += self.compile(command.right)
-			#compiled += "BLOK2 ----------------------------- \n"
-
-
 		elif command.type == CmdTypes.FLOW_STATMENT:
 			compiled += self.indent_of_token(command.pre_op)
-			#compiled += "STATE1 ----------------------------- \n"
 			if command.pre_op == "else":
 				compiled += f"{command.pre_op}:\n"
 			else:
 				compiled += f"{command.pre_op} ({command.right}):\n"
-			#compiled += "STATE2 ----------------------------- \n"
 
+		# --- Function ---
+		elif command.type == CmdTypes.MTHD_BLOCK:
+			compiled += self.compile(command.left)
+			compiled += self.compile(command.right) + "\n"
+		elif command.type == CmdTypes.MTHD_STATMENT:
+			if command.pre_op != "NA":
+				compiled += str(command.pre_op) + " "
+			if not command.left.is_empty():
+				compiled += str(command.left.token)
+			compiled += self.compile(command.right)
+			if command.pos_op != "NA":
+				compiled += str(command.pos_op) + "\n"
+
+
+		elif command.type == CmdTypes.MTHD_PARAMS:
+			compiled += f"{command.pre_op} {self.compile(command.right)}{command.pos_op}"
+		elif command.type == CmdTypes.PARAMS:
+			compiled += f"{self.compile(command.left)}{command.op} {self.compile(command.right)} "
+		elif command.type == CmdTypes.VAR_TYPE_SPECI:
+			compiled += f"{command.left.token}"
+			if not command.right.is_empty():
+				compiled += f"{command.op}{command.right.token}"
+			else:
+				compiled += " "
 
 		return compiled
 
@@ -101,6 +111,8 @@ else;
 
 	alc _2:int;
 
+func sum(a:int, b:int);
+	alc summation:int;
 """
 
 	cpp1:str = """

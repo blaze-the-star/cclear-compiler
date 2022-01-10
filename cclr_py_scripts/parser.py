@@ -7,17 +7,37 @@ except:
 	from lexer import Lexer, Token, TokenList, TokenTypes
 
 import enum
+import re
+import io
 from types import FunctionType
 from tqdm import tqdm
 
 class ParserException(Exception):
 	msg:str = ""
+	script:tuple = tuple()
 
 	def __init__(self, msg:str="") -> None:
 		self.msg = msg
 
+	def code_line(self, code:str, start:int, end:int, highlight:int=-1) -> str:
+		start = max(0,start)
+
+		buf = io.StringIO(code)
+		for i in range(start):
+			buf.readline()
+
+		res = ""
+		for i in range(start, end+1):
+			h:str = "   "
+			if highlight == i:
+				h = ">> "
+			res += f"{h}{str(i).ljust(6)}|  {buf.readline()}"
+
+		return res[:-1]
+
 	def message(self, token:Token, script:tuple) -> str:
-		return f"[Error on line {token.row} col {token.col} - {self.msg}]"
+		line = token.row-1
+		return f"\n{self.code_line(script[1], line-2,line+2, line)}\n--------- \n[Error in {script[0]} on line {line} col {token.col} - {self.msg}]\n"
 
 class Parser(object):
 
@@ -42,8 +62,6 @@ class Parser(object):
 				raise ParserException("Unexpected indent")
 		return True
 			
-
-
 	def parse(self, tokens:TokenList, script:tuple=("filename",""), show_bar:bool=False) -> list:
 		self.cursor = -1
 		self.cursors_saved = [-1]
@@ -112,6 +130,22 @@ class Parser(object):
 
 		return left()
 
+	def t_indent_stmnt(self, stmnt_def, cmd_type:CmdTypes=CmdTypes.NO_TYPE) -> Command:
+		if self.check_indent(self.token_spy()):
+			s1:Command = stmnt_def()
+			if s1.is_empty() or s1.is_error():
+				return s1
+
+			tk:Token = s1.first_token()
+			self.expected_indent += 1
+			s2:Command = self.p_scope(tk.row, cmd_type=CmdTypes.CODE_BLOCK)
+			if s2.is_empty() or s2.is_error():
+				return s1
+
+			return CmdGroup( left=s1, right=s2,	type=cmd_type, indent=s1.indent )
+		
+		return CmdEmpty()
+
 	def token_inspect(self, expectation:str) -> str:
 		return self.token_next() == expectation
 
@@ -125,8 +159,7 @@ class Parser(object):
 		val:str = ""
 		if self.cursor < len(self.tokens)-1:
 			val = self.tokens[self.cursor+1]
-			if val == equater:
-				self.check_indent(val)
+			if val == equater and self.check_indent(val):
 				self.cursor += 1
 				return True
 
@@ -165,13 +198,13 @@ class Parser(object):
 	def p_statement(self) -> Command:
 		reading_tk:Token = self.token_spy()
 
-		cmd:Command = self.p_vardec_start()
-
+		cmd:Command = self.p_vardec_start()		# Variable Declaration
 		if cmd.is_empty():
-			cmd = self.p_ifblk_start()
-
+			cmd = self.p_ifblk_blk2()			# If
 		if cmd.is_empty():
-			cmd = self.p_expr_start()
+			cmd = self.p_funcblk_start()		# Func
+		if cmd.is_empty():
+			cmd = self.p_expr_start()			# Expression
 
 		if not cmd.is_empty():
 			return cmd
@@ -181,21 +214,20 @@ class Parser(object):
 
 		raise( ParserException(f"Undefined token '{reading_tk}'") )
 
-
 	def p_scope(self, row:int=-1, cmd_type:CmdTypes=CmdTypes.NO_TYPE) -> Command:
 		if self.expected_indent == -1:
 			self.expected_indent = self.token_spy().indent
 		self.can_dedent = False
 
 		body:list = []
-		while self.cursor < len(self.tokens)-1:
+		while True:
 			if self.token_spy().indent == self.expected_indent:
 				cmd:Command = self.p_statement()
 				self.can_dedent = True
 				body.append( cmd )
 
 			elif self.token_spy().indent < self.expected_indent and self.can_dedent:
-				#self.expected_indent = self.token_spy().indent
+				self.expected_indent -= 1
 				break
 			else:
 				raise( ParserException("Indent error; TODO: Put a proper message here (Parser.p_scope)") )
@@ -204,12 +236,9 @@ class Parser(object):
 			raise( ParserException("TODO: Put a proper message here (Parser.p_scope)") )
 
 
-		self.expected_indent -= 1
+		return CmdCodeBlk(type=cmd_type, body=body, indent=self.expected_indent)
 
-		return CmdStmntArr(type=cmd_type, commands=body, indents=self.expected_indent)
-
-	# ============================================
-	# =================================
+	# =============================================================================
 	# Parse Misc
 	# =============================================================================
 
@@ -235,9 +264,49 @@ class Parser(object):
 				i += 1
 
 			if use:
-				return CmdIdentifier(value=token, indent=self.token_next().indent)
+				return CmdToken(token=token, indent=self.token_next().indent)
 
 		return CmdEmpty()
+
+	def p_var_name(self) -> Command:
+		cmd:Command = self.p_name()
+		cmd.type = CmdTypes.VARIABLE_NAME
+		return cmd
+
+	def p_type_name(self) -> Command:
+		cmd:Command = self.p_name()
+		cmd.type = CmdTypes.TYPE_NAME
+		return cmd
+
+	def p_mthd_name(self) -> Command:
+		cmd:Command = self.p_name()
+		cmd.type = CmdTypes.MTHD_NAME
+		return cmd
+
+	# =============================================================================
+	# Parse Parameter Array
+	# =============================================================================
+
+	def p_params(self) -> Command:
+		return self.t_eoe(left=self.p_var_type_specify, right=self.p_params,
+			op=",", cmd_type=CmdTypes.PARAMS)
+
+	def p_var_type_specify(self) -> Command:
+		var_name = self.p_var_name()
+		if var_name:
+			if self.token_next_check(":"):
+				tk = self.token_now()
+				type_name = self.p_type_name()
+				if type_name:
+					return CmdVarTypeSpeci(type=CmdTypes.VAR_TYPE_SPECI, var_name=var_name.token, type_name=type_name.token, op=tk)
+
+			raise ParserException("TODO: add proper message here (p_var_type_specify)")
+
+		return CmdEmpty()
+
+		return CmdVarTypeSpeci()
+		self.t_eoe(left=self.p_var_name, right=self.p_type_name,
+			op=":", cmd_type=CmdTypes.VAR_TYPE_SPECI)
 
 	# =============================================================================
 	# Parse Expression
@@ -273,14 +342,7 @@ class Parser(object):
 			self.token_next()
 			return CmdNumericLiteral(value=token, indent=token.indent)
 
-		return self.p_expr_var()
-
-	def p_expr_var(self) -> Command:
-		e1 = self.p_name()
-		if e1.is_error() or e1.is_empty():
-			return e1
-		e1.type = CmdTypes.VARIABLE
-		return e1
+		return self.p_var_name()
 
 	# =============================================================================
 	# Parse Variable Declaration
@@ -301,27 +363,12 @@ class Parser(object):
 
 			# Var options
 			command.cmd_options = self.p_vardec_opti1()
-			if command.cmd_options.is_error():
-				return command.cmd_options
 
-			# Var name
-			command.cmd_name = self.p_name()
-			if command.cmd_name.is_empty():
-				raise( ParserException("Invalid name in variable declaration") )
-
-
-			# Var type
-			if self.token_next_check(":"):
-				command.cmd_type = self.p_name()
-				if command.cmd_type.is_empty():
-					raise( ParserException("Invalid type in variable declaration") ) 
-			else:
-				raise( ParserException("Expected a ':' between declaring variable's name and type") )
+			# Var type specify
+			command.cmd_var_type_speci = self.p_var_type_specify()
 
 			# Var assignment
 			command.cmd_asignment = self.p_vardec_assi()
-			if command.cmd_asignment.is_error():
-					return command.cmd_asignment
 
 			if self.token_next_check(";"):
 				if length != -1:
@@ -334,8 +381,14 @@ class Parser(object):
 		return CmdEmpty()
 		
 	def p_vardec_assi(self) -> Command:
-		return self.t_eoe(self.p_empty, self.p_expr_start,
-				pre_op="=", cmd_type=CmdTypes.ASSIGNMENT)
+		if self.token_next_check("="):
+			eq = self.token_now()
+			expr = self.p_expr_start()
+			if expr:
+				return CmdAssign(equator=eq, cmd_expr=expr)
+			raise ParserException("TODO: Add proper message here (p_vardec_assi)")
+
+		return CmdEmpty()
 
 	def p_vardec_opti1(self) -> Command:
 		return self.t_eoe(self.p_empty, self.p_vardec_opti2,
@@ -364,38 +417,59 @@ class Parser(object):
 	# Parse If block
 	# =============================================================================
 
-	def t_stmnt(self, stmnt_def, cmd_type:CmdTypes=CmdTypes.NO_TYPE) -> Command:
-		if self.check_indent(self.token_spy()):
-			s1:Command = stmnt_def()
-			if s1.is_empty() or s1.is_error():
-				return s1
+	REGEX_IF:re.Pattern = re.compile("(if|elif|else if|else|els)")
+	REGEX_SUBIF:re.Pattern = re.compile("(elif|else if|else|els)")
 
-			tk:Token = s1.first_token()
-			self.expected_indent += 1
-			s2:Command = self.p_scope(tk.row, cmd_type=CmdTypes.CODE_BLOCK)
-			if s2.is_empty() or s2.is_error():
-				return s1
+	def p_ifblk_blk2(self) -> CmdIfBlock:
+		if_arr = list()
+		while self.cursor < len(self.tokens):
+			if len(if_arr) == 0:
+				cmd_if:Command = self.p_ifblk_stmnt2("if")
+				if cmd_if.is_empty():
+					return cmd_if
+				if_arr.append(cmd_if)
 
-			return CmdGroup( left=s1, right=s2,	type=cmd_type, indent=s1.indent )
-		
-		return CmdEmpty()
+			else:
+				cmd_if:Command = self.p_ifblk_stmnt2(self.REGEX_SUBIF)
+				if cmd_if.is_empty():
+					return CmdIfBlock(indent=self.expected_indent, statements=if_arr)
+				if_arr.append(cmd_if)
+
+	def p_ifblk_stmnt2(self, starting_keyword=REGEX_IF) -> CmdIfBlock:
+		if self.token_next_check(starting_keyword):
+			tk = self.token_now()
+			expr = CmdEmpty()
+			if tk != "(else|els)":
+				expr = self.p_expr_start()
+				if expr.is_empty():
+					raise ParserException(f"Expected '{tk}' statement to have an expression but got token '{self.token_spy()}' ")
+
+			if self.token_next_check(";"):
+				tk_end = self.token_now()
+				self.expected_indent += 1
+				block = self.p_scope(self.expected_indent, cmd_type=CmdTypes.CODE_BLOCK)
+				return CmdIfStmnt(indent=self.expected_indent, tok_if=tk, tok_end=tk_end, cmd_expr=expr, cmd_code_blk=block)
+			else:
+				raise ParserException(f"Expected '{tk}' statement to end with a ';' but got '{self.token_spy()}' ")
+
+		return self.p_empty()
 
 	def p_ifblk_start(self) -> Command:
 		return self.t_eoe( self.p_ifblk_block1, self.p_ifblk_block2_3,
 			op="PASS", cmd_type=CmdTypes.FLOW_START )
 
 	def p_ifblk_block1(self) -> Command:
-		return self.t_stmnt(self.p_ifblk_def1, cmd_type=CmdTypes.FLOW_BLOCK)
+		return self.t_indent_stmnt(self.p_ifblk_def1, cmd_type=CmdTypes.FLOW_BLOCK)
 
 	def p_ifblk_block2_3(self) -> Command:
 		return self.t_eoe( self.p_ifblk_block2, self.p_ifblk_block3,
 			op="PASS", cmd_type=CmdTypes.FLOW_BLOCK )
 
 	def p_ifblk_block2(self) -> Command:
-		return self.t_stmnt(self.p_ifblk_def2, cmd_type=CmdTypes.FLOW_BLOCK)
+		return self.t_indent_stmnt(self.p_ifblk_def2, cmd_type=CmdTypes.FLOW_BLOCK)
 
 	def p_ifblk_block3(self) -> Command:
-		return self.t_stmnt(self.p_ifblk_def3, cmd_type=CmdTypes.FLOW_BLOCK)
+		return self.t_indent_stmnt(self.p_ifblk_def3, cmd_type=CmdTypes.FLOW_BLOCK)
 
 	def p_ifblk_def1(self) -> Command:
 		return self.t_eoe( self.p_empty, self.p_expr_start, 
@@ -409,26 +483,45 @@ class Parser(object):
 		return self.t_eoe( self.p_empty, self.p_expr_start, 
 			pre_op="else", pos_op=";", cmd_type=CmdTypes.FLOW_STATMENT )
 
+	# =============================================================================
+	# Parse Func block
+	# =============================================================================
+
+	def p_funcblk_start(self) -> Command:
+		return self.t_indent_stmnt(self.p_funcblk_def, cmd_type=CmdTypes.MTHD_BLOCK)
+
+	def p_funcblk_def(self) -> Command:
+		return self.t_eoe( self.p_empty, self.p_funcblk_name, 
+			pre_op="func", pos_op=";", cmd_type=CmdTypes.MTHD_STATMENT )
+
+	def p_funcblk_name(self) -> Command:
+		return self.t_eoe( self.p_mthd_name, self.p_mthd_params, 
+			op="PASS",cmd_type=CmdTypes.MTHD_STATMENT )
+
+	def p_mthd_params(self):
+		return self.t_eoe( self.p_empty, self.p_params, 
+			pre_op="(", pos_op=")",cmd_type=CmdTypes.MTHD_PARAMS )
+
 if __name__ == "__main__":
 	l = Lexer()
 	p = Parser()
 
 	script = "1 + 5 * 5 * (3 / 2 - 4 / 1 + 1) - 1 / 8"
 	script = """
-	
 alc new_var:int = 5;
-
-alc new_var:int = 5;
-
+alc new_var2:int = 5;
 if 5;
-	alc new:thing;
-
-
- """
+	alc new1:int;
+	if new1;
+		alc old:int;
+elif 6;
+	alc new2:int;
+elif 8;
+	alc new3:int;
+els;
+	alc new4:int;
+"""
 
 	tokens = l.tokenize(script)
-	parsed = p.parse(tokens)
-
-	print("Script", script)
-
-	print("Parsed", str(parsed))
+	parsed = p.parse(tokens, script=("NOFILE", script))
+	print(f"Parsed '{parsed.cpp()}'")

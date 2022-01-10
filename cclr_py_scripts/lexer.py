@@ -34,7 +34,7 @@ class Token:
 	type:int = TokenTypes.NONE
 
 	def __add__(self, add_by:str) -> str:
-		assert(add_by is str, "TypeError: unsupported operand type(s) for +: 'Token' and '{}'".format(type(add_by).__name__))
+		assert add_by is str, "TypeError: unsupported operand type(s) for +: 'Token' and '{}'".format(type(add_by).__name__)
 		return self.text + add_by
 
 	def __eq__(self, obj:object) -> bool:
@@ -42,6 +42,8 @@ class Token:
 			return self.text == obj
 		elif isinstance(obj, Token):
 			return self.text == obj.text
+		elif isinstance(obj, re.Pattern):
+			return obj.fullmatch(self.text)
 		elif isinstance(obj, int):
 			return self.type == obj
 		elif isinstance(obj, Tuple):
@@ -59,6 +61,9 @@ class Token:
 		self.indent = indent
 		self.type = type
 
+	def __repr__(self):
+		return f"'{self.text}', {self.type.__repr__()}"
+
 	def __str__(self) -> str:
 		return self.text
 
@@ -67,19 +72,19 @@ class Lexer:
 	RE_INDENT = re.compile(r"(?:^)[ \t]+", flags=re.MULTILINE)
 
 	codes:Dict = {
-		re.compile(r"//.*")											:TokenTypes.COMMENT,	# Matches a one-line comment
-		re.compile(r"/\*.*\*/")										:TokenTypes.COMMENT,	# Matches a multi-line comment
-		re.compile(r"([a-zA-Z]+|[_]+[a-zA-Z0-9])[a-zA-Z0-9_]*")		:TokenTypes.VARNAME,	# Matches a valid variable name
+		re.compile(r"//.*")											:TokenTypes.COMMENT,	# Matches comment one-line 
+		re.compile(r"/\*.*\*/")										:TokenTypes.COMMENT,	# Matches comment multi-line
+		re.compile(r"([a-zA-Z]+|[_]+[a-zA-Z0-9])[a-zA-Z0-9_]*")		:TokenTypes.VARNAME,	# Matches variable name
 		re.compile(r"alc")											:TokenTypes.KEYWORD,	# Matches keyword alc
-		re.compile(r"(if|else|elif)")								:TokenTypes.KEYWORD,	# Matches keyword for if statements
-		re.compile(r"[0-9]+")										:TokenTypes.INT,		# Matches valid int
-		re.compile(r"[0-9]*\.[0-9]+")								:TokenTypes.FLOAT,		# Matches valid float
-		re.compile(r"\n")											:TokenTypes.NEWLINE,	# Matches a new line
-		RE_INDENT													:TokenTypes.INDENT,		# Matches a indents at start of fline
+		re.compile(r"(if|else|elif)")								:TokenTypes.KEYWORD,	# Matches keyword if else elif
+		re.compile(r"[0-9]+")										:TokenTypes.INT,		# Matches meta int
+		re.compile(r"[0-9]*\.[0-9]+")								:TokenTypes.FLOAT,		# Matches meta float
+		re.compile(r"\n")											:TokenTypes.NEWLINE,	# Matches new-line
+		RE_INDENT													:TokenTypes.INDENT,		# Matches indents at start of fline
 		re.compile(r"[)(]")											:TokenTypes.SYMBOL,		# Matches parenthesis
-		re.compile(r"[+\-*/|^%]")									:TokenTypes.SYMBOL,		# Matches any math symbol
-		re.compile(r"(>=|<=|==|[!&|?><=])")							:TokenTypes.SYMBOL,		# Matches any logic symbol
-		re.compile(r"[:;]")											:TokenTypes.SYMBOL,		# Matches end statement or type specifier symbol
+		re.compile(r"[+\-*/|^%]")									:TokenTypes.SYMBOL,		# Matches symbols (math)
+		re.compile(r"(>=|<=|==|[!&|?><=])")							:TokenTypes.SYMBOL,		# Matches symbols (logic)
+		re.compile(r"[:;,]")										:TokenTypes.SYMBOL,		# Matches symbols (other)
 		re.compile(r" ")											:TokenTypes.NONE,		# Match space,
 		re.compile(r".+?(?:\b)")									:TokenTypes.ERROR,		# Matches any token for an error,
 	}
